@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Embed Lab</title>
+<link rel="preconnect" href="https://i.ytimg.com">
+<style>
+  /* Layout: control bar on top, 2x2 grid of embed strategies, each with its own data readout */
+  :root {
+    --bg: #f3f4f1; --panel: #ffffff; --fg: #1b1e1c; --muted: #5d6660;
+    --line: #dde1dc; --accent: #c2410c; --ok: #15803d; --warn: #b45309;
+    --font: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121513; --panel: #1b1f1c; --fg: #e7eae6; --muted: #98a19a;
+      --line: #2c322e; --accent: #fb923c; --ok: #4ade80; --warn: #fbbf24; color-scheme: dark; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font);
+    padding: 20px max(16px, env(safe-area-inset-left)) 40px max(16px, env(safe-area-inset-right)); }
+  header { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; max-width: 1200px; margin: 0 auto 20px; }
+  h1 { font-size: 20px; margin: 0; flex: 1 1 200px; }
+  h1 small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+  label { font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+  input { font: 14px var(--mono); padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--fg); width: 15ch; }
+  input#manifest { width: 28ch; }
+  button { font: 600 13px var(--font); padding: 8px 14px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--panel); color: var(--fg); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:focus-visible, .stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+    gap: 16px; max-width: 1200px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+    display: flex; flex-direction: column; min-width: 0; }
+  .panel h2 { font-size: 14px; margin: 0; padding: 12px 14px 2px; display: flex; gap: 8px; align-items: center; }
+  .panel p { margin: 0; padding: 0 14px 10px; color: var(--muted); font-size: 13px; }
+  .tag { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px; border: 1px solid currentColor; color: var(--muted); }
+  .stage { position: relative; aspect-ratio: 16/9; max-width: 100%; background: #000; overflow: hidden; }
+  .stage img, .stage iframe, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%;
+    border: 0; object-fit: cover; }
+  .stage .xfade { transition: opacity .6s ease; }
+  .play { position: absolute; inset: 0; margin: auto; width: 68px; height: 48px; border: 0; border-radius: 12px;
+    background: rgba(0,0,0,.72); color: #fff; font-size: 20px; display: grid; place-items: center; }
+  .stage:hover .play { background: #e11d2b; }
+  .scrub { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,.25); }
+  .scrub i { display: block; height: 100%; width: 0; background: var(--accent); }
+  .hint { position: absolute; left: 10px; top: 10px; font: 11px var(--mono); color: #fff;
+    background: rgba(0,0,0,.55); padding: 3px 7px; border-radius: 4px; }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    color: #cfd4d0; padding: 20px; font-size: 13px; }
+  .empty code { font-family: var(--mono); color: #fff; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
+  dl { display: grid; grid-template-columns: repeat(3, 1fr); margin: 0; border-top: 1px solid var(--line); }
+  dl div { padding: 8px 14px; border-right: 1px solid var(--line); min-width: 0; }
+  dl div:last-child { border-right: 0; }
+  dt { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  dd { margin: 0; font: 600 14px var(--mono); font-variant-numeric: tabular-nums; }
+  dd.ok { color: var(--ok); } dd.warn { color: var(--warn); }
+  @media (prefers-reduced-motion: reduce) { .stage .xfade { transition: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Embed Lab <small>Same video, four ways to present it. Compare first paint, requests and bytes.</small></h1>
+  <label>YouTube ID <input id="vid" value="t5oWU3unp6s" spellcheck="false"></label>
+  <label>Frames manifest <input id="manifest" placeholder="frames/ID/manifest.json" spellcheck="false"></label>
+  <button class="primary" id="load">Load</button>
+</header>
+
+<main class="grid">
+  <!-- A: baseline -->
+  <section class="panel" data-mode="iframe">
+    <h2>Full iframe <span class="tag">baseline</span></h2>
+    <p>Standard embed. Player JS loads immediately, before anyone presses play.</p>
+    <div class="stage"></div>
+    <dl><div><dt>First paint</dt><dd data-k="paint">–</dd></div>
+        <div><dt>Player loaded</dt><dd data-k="player">–</dd></div>
+        <div><dt>Est. idle cost</dt><dd data-k="bytes">~0.6–1.5 MB</dd></div></dl>
+  </section>
+
+  <!-- B: facade -->
+  <section class="panel" data-mode="facade">
+    <h2>Facade <span class="tag">click to load</span></h2>
+    <p>One thumbnail. The real player loads only when the viewer clicks.</p>
+    <div class="stage" tabindex="0" role="button" aria-label="Play video"></div>
+    <dl><div><dt>First paint</dt><dd data-k="paint">–</dd></div>
+        <div><dt>Player loaded</dt><dd data-k="player">–</dd></div>
+        <div><dt>Thumb size</dt><dd data-k="bytes">–</dd></div></dl>
+  </section>
+
+  <!-- C: thumbnail loop -->
+  <section class="panel" data-mode="loop">
+    <h2>Thumbnail loop <span class="tag">3 frames</span></h2>
+    <p>Cross-fades YouTube's auto frames (≈25/50/75%). Motion hint, no player. Click to watch.</p>
+    <div class="stage" tabindex="0" role="button" aria-label="Play video"></div>
+    <div class="controls"><button data-act="pause">Pause</button>
+      <label style="grid-auto-flow:column;align-items:center">Interval
+        <input type="range" id="loopMs" min="400" max="3000" step="100" value="1500" style="width:120px"></label></div>
+    <dl><div><dt>First paint</dt><dd data-k="paint">–</dd></div>
+        <div><dt>Player loaded</dt><dd data-k="player">–</dd></div>
+        <div><dt>Images</dt><dd data-k="bytes">–</dd></div></dl>
+  </section>
+
+  <!-- D: frame sequence -->
+  <section class="panel" data-mode="frames">
+    <h2>Frame sequence <span class="tag">your frames</span></h2>
+    <p>Plays extracted WebP frames. Hover or drag to scrub. "Watch with sound" hands off to YouTube at the same timestamp.</p>
+    <div class="stage" tabindex="0"></div>
+    <div class="controls"><button data-act="toggle">Pause</button><button data-act="sound">Watch with sound</button>
+      <label style="grid-auto-flow:column;align-items:center">Speed
+        <select id="speed"><option value="0.5">0.5×</option><option value="1" selected>1×</option>
+          <option value="2">2×</option><option value="4">4×</option></select></label></div>
+    <dl><div><dt>First paint</dt><dd data-k="paint">–</dd></div>
+        <div><dt>Frames loaded</dt><dd data-k="player">–</dd></div>
+        <div><dt>Bytes so far</dt><dd data-k="bytes">–</dd></div></dl>
+  </section>
+</main>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const panel = m => $(`[data-mode="${m}"]`);
+const set = (m, k, v, cls) => { const d = $(`[data-k="${k}"]`, panel(m)); d.textContent = v; d.className = cls || ''; };
+const fmtB = b => b == null ? 'n/a' : b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(1) + ' KB' : (b / 1048576).toFixed(2) + ' MB';
+const thumb = (id, name) => `https://i.ytimg.com/vi/${id}/${name}.jpg`;
+let t0 = 0, timers = [], stopFrames = null;
+const since = () => Math.round(performance.now() - t0) + ' ms';
+
+// Byte sizes via Resource Timing. Cross-origin (ytimg) may report 0 without Timing-Allow-Origin.
+function sizeOf(url) {
+  const e = performance.getEntriesByName(url).pop();
+  return e ? (e.encodedBodySize || e.transferSize || null) : null;
+}
+
+function iframe(id, start = 0, autoplay = 1) {
+  const f = document.createElement('iframe');
+  f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=${autoplay}&start=${Math.floor(start)}&rel=0&playsinline=1`;
+  f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  f.allowFullscreen = true; f.title = 'YouTube video';
+  return f;
+}
+
+function handoff(mode, id, start = 0) {
+  const st = $('.stage', panel(mode));
+  st.replaceChildren(iframe(id, start, 1));
+  set(mode, 'player', 'on click', 'warn');
+}
+
+function load() {
+  timers.forEach(clearInterval); timers = [];
+  if (stopFrames) { stopFrames(); stopFrames = null; }
+  t0 = performance.now();
+  const id = $('#vid').value.trim();
+  if (!/^[\w-]{11}$/.test(id)) { alert('YouTube IDs are 11 characters'); return; }
+
+  // A: baseline iframe
+  { const st = $('.stage', panel('iframe')); const f = iframe(id, 0, 0);
+    f.onload = () => { set('iframe', 'paint', since()); set('iframe', 'player', 'yes', 'warn'); };
+    st.replaceChildren(f); }
+
+  // B: facade
+  { const st = $('.stage', panel('facade')); const url = thumb(id, 'hqdefault');
+    const img = new Image(); img.alt = ''; img.src = url;
+    img.onload = () => { set('facade', 'paint', since()); set('facade', 'player', 'no', 'ok');
+      setTimeout(() => set('facade', 'bytes', fmtB(sizeOf(url))), 50); };
+    const btn = document.createElement('button'); btn.className = 'play'; btn.textContent = '▶'; btn.tabIndex = -1;
+    st.replaceChildren(img, btn);
+    st.onclick = st.onkeydown = e => { if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return; handoff('facade', id); st.onclick = st.onkeydown = null; }; }
+
+  // C: thumbnail loop (hq1-3 are 480x360; fall back to small 1-3)
+  { const p = panel('loop'), st = $('.stage', p);
+    const names = ['hq1', 'hq2', 'hq3'];
+    const imgs = names.map((n, i) => { const im = new Image(); im.className = 'xfade'; im.alt = '';
+      im.style.opacity = i ? 0 : 1; im.src = thumb(id, n);
+      im.onerror = () => { im.onerror = null; im.src = thumb(id, String(i + 1)); }; return im; });
+    imgs[0].addEventListener('load', () => { set('loop', 'paint', since()); set('loop', 'player', 'no', 'ok'); }, { once: true });
+    Promise.all(imgs.map(im => im.decode().catch(() => {}))).then(() => setTimeout(() => {
+      const total = imgs.map(im => sizeOf(im.src)); set('loop', 'bytes', total.includes(null) ? '3 imgs' : fmtB(total.reduce((a, b) => a + b, 0)));
+    }, 50));
+    const btn = document.createElement('button'); btn.className = 'play'; btn.textContent = '▶'; btn.tabIndex = -1;
+    st.replaceChildren(...imgs, btn);
+    let k = 0, paused = false;
+    const tick = () => { if (paused) return; imgs[k].style.opacity = 0; k = (k + 1) % imgs.length; imgs[k].style.opacity = 1; };
+    let h = setInterval(tick, +$('#loopMs').value); timers.push(h);
+    $('#loopMs').oninput = e => { clearInterval(h); h = setInterval(tick, +e.target.value); timers.push(h); };
+    $('[data-act="pause"]', p).onclick = e => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
+    st.onclick = st.onkeydown = e => { if (e.type === 'keydown' && !['Enter', ' '].includes(e.key)) return;
+      timers.forEach(clearInterval); handoff('loop', id); st.onclick = st.onkeydown = null; }; }
+
+  // D: frame sequence
+  loadFrames(id, $('#manifest').value.trim() || `frames/${id}/manifest.json`);
+}
+
+async function loadFrames(id, url) {
+  const p = panel('frames'), st = $('.stage', p);
+  let m;
+  try { const r = await fetch(url); if (!r.ok) throw 0; m = await r.json(); }
+  catch {
+    st.innerHTML = `<div class="empty"><div>No frames yet for this video.<br>Run <code>./extract-frames.sh video.mp4 ${id}</code><br>then serve this page from the same folder.</div></div>`;
+    ['paint', 'player', 'bytes'].forEach(k => set('frames', k, '–'));
+    return;
+  }
+  const base = url.replace(/[^/]*$/, '');
+  const src = i => base + m.pattern.replace('%04d', String(i + 1).padStart(4, '0'));
+  const cache = new Map(); let bytes = 0;
+  const get = i => { if (!cache.has(i)) { const im = new Image(); im.decoding = 'async'; im.src = src(i);
+      im.onload = () => { bytes += sizeOf(im.src) || 0; set('frames', 'player', `${countLoaded()} / ${m.count}`);
+        set('frames', 'bytes', fmtB(bytes) + ` of ${fmtB(m.totalBytes)}`);
+        if (!firstPaint && idx === i) draw(i); };
+      cache.set(i, im); } return cache.get(i); };
+  const countLoaded = () => [...cache.values()].filter(im => im.complete && im.naturalWidth).length;
+
+  const canvas = document.createElement('canvas'); canvas.width = m.width; canvas.height = m.height;
+  const ctx = canvas.getContext('2d');
+  const bar = document.createElement('div'); bar.className = 'scrub'; bar.innerHTML = '<i></i>';
+  const hint = document.createElement('span'); hint.className = 'hint';
+  st.replaceChildren(canvas, bar, hint);
+
+  let i = 0, playing = true, last = 0, speed = 1, firstPaint = false;
+  const AHEAD = 6;
+  const draw = idx => {
+    const im = get(idx);
+    for (let a = 1; a <= AHEAD; a++) get((idx + a) % m.count);
+    if (im.complete && im.naturalWidth) {
+      ctx.drawImage(im, 0, 0, m.width, m.height);
+      if (!firstPaint) { firstPaint = true; set('frames', 'paint', since()); }
+    }
+    bar.firstChild.style.width = ((idx + 1) / m.count * 100) + '%';
+    const t = m.start + idx / m.fps;
+    hint.textContent = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')} · ${idx + 1}/${m.count}`;
+  };
+  const loop = now => {
+    if (playing && now - last >= 1000 / (m.fps * speed)) { last = now; i = (i + 1) % m.count; draw(i); }
+    raf = requestAnimationFrame(loop);
+  };
+  let raf;
+  draw(0); raf = requestAnimationFrame(loop);
+  stopFrames = () => cancelAnimationFrame(raf);
+
+  const scrubTo = x => { const r = st.getBoundingClientRect(); i = Math.max(0, Math.min(m.count - 1, Math.floor((x - r.left) / r.width * m.count))); draw(i); };
+  let wasPlaying;
+  st.onpointerenter = () => { wasPlaying = playing; playing = false; };
+  st.onpointermove = e => scrubTo(e.clientX);
+  st.onpointerleave = () => { playing = wasPlaying; };
+  st.onkeydown = e => { if (e.key === 'ArrowRight') draw(i = (i + 1) % m.count); if (e.key === 'ArrowLeft') draw(i = (i - 1 + m.count) % m.count); };
+  const tog = $('[data-act="toggle"]', p);
+  tog.onclick = () => { playing = !playing; wasPlaying = playing; tog.textContent = playing ? 'Pause' : 'Play'; };
+  $('#speed').onchange = e => speed = +e.target.value;
+  $('[data-act="sound"]', p).onclick = () => { cancelAnimationFrame(raf); handoff('frames', id, m.start + i / m.fps); };
+}
+
+$('#load').onclick = load;
+$('#vid').onkeydown = e => { if (e.key === 'Enter') load(); };
+const q = new URLSearchParams(location.search).get('v'); if (q) $('#vid').value = q;
+load();
+</script>
+</body>
+</html>
